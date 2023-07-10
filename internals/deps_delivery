@@ -1,0 +1,56 @@
+#!/bin/bash
+
+if [ -z "${1}" ] || [ "${1}" == "master" ]; then
+  NGINX_GITHUB_BRANCH="master"
+else
+  NGINX_GITHUB_BRANCH="release-${1}"
+fi
+
+DEPS_DIR="deps"
+NGINX_GNUmakefile_URL="https://github.com/nginx/nginx/blob/${NGINX_GITHUB_BRANCH}/misc/GNUmakefile"
+NGINX_GNUmakefile_LOCAL="/tmp/NGINX_GNUmakefile"
+
+function main() {
+  if [ -d "${DEPS_DIR}" ]; then rm -r "${DEPS_DIR}"; fi
+
+  mkdir "${DEPS_DIR}" && cd "${DEPS_DIR}"
+
+  if [ $? -ne 0 ]; then
+    echo "Failed to create/enter ${DEPS_DIR} directory." >&2
+    exit 1
+  fi
+  
+  wget -q -T 5 \
+    -U "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36" \
+    -O "${NGINX_GNUmakefile_LOCAL}" "${NGINX_GNUmakefile_URL}"
+
+  if [ $? -ne 0 ]; then
+    echo "Failed to find this version (${NGINX_GITHUB_BRANCH}). Check if it is real in https://github.com/nginx/nginx" >&2
+    exit 1
+  fi
+
+  openssl_v="$(cat "${NGINX_GNUmakefile_LOCAL}" | grep -P "(?<=openssl-)([0-9]+.){2}[0-9]+[[:alpha:]]*" --only-matching | head -1)"
+  zlib_v="$(cat "${NGINX_GNUmakefile_LOCAL}" | grep -P "(?<=zlib-)([0-9]+.){2,}[0-9]+" --only-matching | head -1)"
+  pcre_v="$(cat "${NGINX_GNUmakefile_LOCAL}" | grep -P "pcre2?-[0-9]+.[0-9]+" --only-matching | head -1)"
+
+  if [ -z "$openssl_v" ] || [ -z "$zlib_v" ] || [ -z "$pcre_v" ]; then
+    echo "Does not work for this version of NGINX. Works only for >=0.7.52"
+    exit 1
+  fi
+
+  wget -O openssl.tar.gz "https://www.openssl.org/source/openssl-${openssl_v}.tar.gz"
+  wget -O zlib.tar.gz "https://github.com/madler/zlib/archive/refs/tags/v${zlib_v}.tar.gz"
+
+  if [ "${pcre_v%%-*}" == "pcre2" ]; then
+    wget -O pcre.tar.gz "https://github.com/PCRE2Project/pcre2/releases/download/${pcre_v}/${pcre_v}.tar.gz"
+  else
+    # For old PCRE1 use Unofficial mirror at SourceForge:
+    wget -O pcre.tar.gz "https://downloads.sourceforge.net/project/pcre/${pcre_v/-//}/${pcre_v}.tar.gz"
+  fi
+
+  for dep in {openssl,zlib,pcre}; do
+    tar xf "${dep}.tar.gz" && rm "${dep}.tar.gz" && mv "${dep}"* "${dep}"
+  done
+}
+
+main

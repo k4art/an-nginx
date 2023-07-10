@@ -1,0 +1,12 @@
+#!/bin/bash
+
+if [ -z "${1}" ]; then
+  TAG=master
+else
+  TAG="${1}"
+fi
+
+cd "$(dirname "${BASH_SOURCE[0]}")"
+cd internals
+
+docker build --network=host --build-arg NGINX_VERSION="${TAG}" -t an-nginx:"${TAG}" .
